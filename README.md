@@ -1,59 +1,144 @@
 # LithoAI 2.0
-### Exploring Machine Learning for Semiconductor Manufacturing Process Monitoring
+### Machine Learning for Semiconductor Manufacturing Defect Prediction
 
-## Overview
+LithoAI 2.0 is an experimental research project investigating the use of machine learning for defect prediction and process monitoring in semiconductor manufacturing.
 
-LithoAI 2.0 is an experimental research project investigating how machine learning can support failure prediction and process monitoring in semiconductor manufacturing.
+Using the UCI SECOM dataset, this study examines the challenges of high-dimensional sensor data, class imbalance, missing measurements and temporal changes in manufacturing data.
 
-The project uses the SECOM semiconductor manufacturing dataset to explore the challenges of working with high-dimensional sensor data, class imbalance, missing measurements and changes in data distributions over time.
+The focus is not only on predictive performance, but also on evaluating model reliability, validation strategies and the trade-offs between failure detection and inspection workload.
 
-Rather than focusing only on predictive accuracy, the project also examines model reliability, validation strategies and the practical trade-offs involved in identifying potentially failing manufacturing processes.
+## Research objectives
 
-## Research Objectives
-
-- Investigate machine learning approaches for semiconductor manufacturing failure prediction.
-- Evaluate model performance under significant class imbalance.
-- Examine the effect of missing sensor measurements on predictive reliability.
-- Study model generalisation across chronological data splits.
-- Explore sensor-level distribution changes and their potential implications for process monitoring.
+- Evaluate machine learning models for semiconductor manufacturing defect prediction.
+- Study model performance under severe class imbalance.
+- Investigate robustness to additional missing sensor readings.
+- Examine generalisation across chronological data partitions.
+- Analyse sensor-level distribution and missingness changes.
+- Evaluate the practical trade-off between recall, precision and inspection workload.
 
 ## Dataset
 
-The project uses the SECOM dataset, which contains semiconductor manufacturing process measurements.
+The project uses the **UCI SECOM semiconductor manufacturing dataset**.
 
-Key characteristics include:
-- 1,567 observations
-- 590 sensor features
-- Highly imbalanced failure labels
-- Significant missing sensor measurements
+| Characteristic | Value |
+|---|---:|
+| Observations | 1,567 |
+| Sensor features | 590 |
+| Failed observations | 104 |
+| Passing observations | 1,463 |
+| Failure prevalence | 6.64% |
+| Unique timestamps | 1,534 |
 
-The dataset presents challenges commonly encountered in industrial sensor-data analysis.
+The dataset contains substantial missing sensor measurements, repeated timestamps and low-variation features.
+
+[UCI SECOM dataset](https://archive.ics.uci.edu/static/public/179/secom.zip)
 
 ## Methodology
 
 The experimental workflow includes:
 
-1. **Data exploration and preprocessing** – examining missing values, feature distributions and class imbalance.
-2. **Model development** – evaluating Logistic Regression, Random Forest and HistGradientBoosting.
-3. **Model evaluation** – using precision-recall metrics and grouped cross-validation.
-4. **Threshold analysis** – examining the trade-off between failure detection and inspection workload.
-5. **Missing-data robustness** – testing model behaviour under simulated increases in missing sensor measurements.
-6. **Temporal evaluation** – investigating generalisation across chronological data partitions.
-7. **Sensor distribution analysis** – examining changes in sensor behaviour across time periods.
+1. **Data exploration:** Missing-value analysis, timestamp inspection and feature-quality checks.
+2. **Preprocessing:** Sensor filtering, imputation and model pipelines.
+3. **Grouped validation:** Five-fold StratifiedGroupKFold evaluation using timestamp groups.
+4. **Model comparison:** Logistic Regression, Random Forest and HistGradientBoosting.
+5. **Nested threshold evaluation:** Five outer folds and four inner folds, using an illustrative 80% recall target.
+6. **Missing-data robustness:** Five repetitions with 0%, 5%, 10%, 20% and 30% additional test-time missingness.
+7. **Temporal evaluation:** Expanding-window validation across later chronological periods.
+8. **Sensor analysis:** Distribution shifts, missingness changes and grouped permutation importance.
 
-## Current Research Status
+## Selected experimental results
 
-The project is in the experimental evaluation and validation stage.
+### 1. Grouped cross-validation
 
-Current work focuses on:
-- Comparing model performance under appropriate validation strategies.
-- Evaluating robustness to missing measurements.
-- Investigating temporal generalisation.
-- Identifying methodological limitations and opportunities for improvement.
+Pooled out-of-fold average precision (AP):
 
-Quantitative findings will be documented after the final reproducibility review.
+| Model | AP |
+|---|---:|
+| Logistic Regression | 0.1390 |
+| Random Forest | 0.1926 |
+| HistGradientBoosting | 0.1880 |
 
-## Tools and Technologies
+The overall failure-prevalence baseline was 0.0664. Both tree-based models performed above this baseline, although performance varied across folds.
+
+### 2. Nested threshold evaluation
+
+Thresholds were selected within the inner grouped folds and evaluated on untouched outer folds.
+
+| Model | Recall | Precision | Inspection rate |
+|---|---:|---:|---:|
+| Random Forest | 76.92% | 11.19% | 45.63% |
+| HistGradientBoosting | 82.69% | 9.46% | 58.01% |
+
+HistGradientBoosting detected more failures, but required a higher inspection workload. These results illustrate why recall should not be considered in isolation.
+
+### 3. Robustness to additional missing data
+
+Comparison between 0% and 30% additional test-time missingness:
+
+| Model | AP (0% → 30%) | Recall (0% → 30%) |
+|---|---:|---:|
+| HistGradientBoosting | 0.2289 → 0.1994 | 82.82% → 75.24% |
+| Random Forest | 0.2279 → 0.2072 | 77.45% → 87.96% |
+
+Random Forest's higher recall at 30% missingness came with an increase in inspection rate from 45.66% to 64.38%. The models therefore showed different responses to sensor-data loss.
+
+### 4. Chronological generalisation
+
+Expanding-window validation produced the following AP scores:
+
+| Test period | Random Forest | HistGradientBoosting |
+|---|---:|---:|
+| Period 3 | 0.2795 | 0.2979 |
+| Period 4 | 0.0579 | 0.0471 |
+| Period 5 | 0.0930 | 0.0543 |
+| Mean across periods | 0.1435 | 0.1331 |
+
+The later periods contained only 11, 11 and 17 failures, respectively. Results should therefore be interpreted cautiously. The decline in performance does not establish a causal relationship with sensor drift.
+
+### 5. Sensor distribution analysis
+
+The chronological sensor audit found an increase in the number of sensors with median shifts greater than one training IQR:
+
+- Period 3: 1 sensor
+- Period 4: 7 sensors
+- Period 5: 9 sensors
+
+The number of sensors with missingness changes exceeding 10 percentage points also increased across the evaluated periods. These are descriptive indicators of temporal data changes, not proof of their cause or impact on model performance.
+
+## Key observations
+
+- Timestamp-grouped validation is important for avoiding overlap between observations sharing timestamps.
+- Tree-based models achieved higher pooled AP than Logistic Regression in the grouped evaluation.
+- Higher failure recall can require substantially more inspections.
+- Additional missingness affected the models differently.
+- Predictive performance varied considerably across chronological periods.
+- Missingness indicators did not provide a consistent improvement across the three temporal test periods.
+
+## Limitations
+
+- The study uses a single public dataset with only 104 failure observations.
+- The chronological test periods contain relatively few failures.
+- SECOM is a general semiconductor manufacturing dataset; it does not establish lithography-specific predictive performance.
+- Artificial sensor masking does not necessarily reproduce real industrial missing-data mechanisms.
+- Sensor importance and distribution shifts are exploratory and should not be interpreted causally.
+- No production deployment or external manufacturing-line validation has been conducted.
+
+## Repository structure
+
+```text
+LithoAI/
+├── notebooks/
+│   ├── documentation/
+│   ├── results/
+│   ├── LithoAI_2_0_Audited_Cleaned (1).ipynb
+│   ├── lithoai_experiments.ipynb
+│   └── README.md
+├── .gitignore
+├── requirements.txt
+└── README.md
+```
+
+## Tools and technologies
 
 - Python
 - NumPy and Pandas
@@ -62,32 +147,29 @@ Quantitative findings will be documented after the final reproducibility review.
 - Google Colab
 - Git and GitHub
 
-## Limitations
+## Reproducibility
 
-The SECOM dataset is a general semiconductor manufacturing dataset. It does not, by itself, establish lithography-specific predictive performance.
+The research notebook downloads the UCI SECOM dataset directly from its archive. It is designed to run in Google Colab.
 
-The experiments are conducted on a limited dataset and should not be interpreted as evidence of production-ready deployment. Further validation on additional manufacturing datasets would be necessary.
+Install the listed dependencies using:
 
-## Future Work
-
-- Improve experimental reproducibility.
-- Investigate additional validation strategies.
-- Explore feature stability and sensor relationships.
-- Evaluate generalisation across additional datasets.
-- Investigate the feasibility of applying the framework to more specific semiconductor manufacturing processes.
-
-## Repository Structure
-
-```text
-LithoAI/
-├── notebooks/
-└── README.md
+```bash
+pip install -r requirements.txt
 ```
+
+Run the notebook from top to bottom to reproduce the experiments. Random seeds and validation procedures are specified in the notebook.
+
+## Future work
+
+- Further investigate temporal generalisation.
+- Explore sensor stability and feature relationships.
+- Evaluate additional model and threshold-selection strategies.
+- Test on independent semiconductor manufacturing datasets.
+- Investigate the feasibility of adapting the framework to more specific manufacturing processes.
 
 ## Author
 
 **Aryaa Kavi**  
-B.Tech – VLSI Design and Technology
+B.Tech — VLSI Design and Technology
 
-This project is an ongoing independent exploration of machine learning methods for semiconductor manufacturing analysis.
-B.Tech – VLSI Design and Technology
+An ongoing independent research project exploring machine learning methods for semiconductor manufacturing analysis.

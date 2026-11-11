@@ -1,106 +1,125 @@
-# LithoAI 2.0 — Experimental Results
+# LithoAI 2.0
+### Evaluating machine learning for semiconductor manufacturing defect prediction
 
-This page records the primary experiment outputs from `LithoAI_2_0_Research_Notebook.ipynb`. It distinguishes pooled out-of-fold average precision from the mean of fold-specific AP scores. These are different aggregations.
+LithoAI 2.0 is an independent experimental research project investigating machine-learning methods for identifying defective observations in semiconductor manufacturing data. It uses the public **UCI SECOM** dataset to study class imbalance, incomplete sensor measurements, timestamp-grouped validation and temporal generalisation.
 
-## 1. Dataset summary
+The project focuses on evaluation methodology and operational trade-offs rather than claiming a production-ready defect predictor. The SECOM dataset is a general semiconductor manufacturing dataset; the experiments do **not** establish lithography-specific performance.
 
-| Quantity | Value |
+## Research questions
+
+- How do linear and tree-based classifiers rank rare failure observations under timestamp-grouped validation?
+- How do recall, precision and inspection workload change when decision thresholds are selected to target a recall level?
+- How sensitive are predictions to additional missing sensor readings at inference time?
+- How well do models generalise to later chronological periods?
+- What sensor-distribution and missingness changes are visible across those periods?
+
+## Dataset
+
+The project uses the UCI SECOM dataset.
+
+| Characteristic | Value |
 |---|---:|
 | Observations | 1,567 |
 | Sensor features | 590 |
-| Failures | 104 |
+| Failure observations | 104 |
 | Passing observations | 1,463 |
-| Failure prevalence | 0.0664 |
+| Failure prevalence | 6.64% |
 | Unique timestamps | 1,534 |
 | Features with missing values | 538 |
-| Constant/single-value sensors | 116 |
 
-Three timestamp groups contain both labels. Keeping timestamp groups intact prevents records sharing a timestamp from being split across train and validation folds; it does not resolve the contradictory labels within those groups.
+The data are highly imbalanced and contain substantial missing sensor readings. Observations with the same timestamp are kept together during grouped validation.
 
-## 2. Primary grouped model comparison
+Dataset source: [UCI SECOM](https://archive.ics.uci.edu/dataset/179/secom).
 
-Primary pipeline: Logistic Regression, Random Forest (300 trees) and HistGradientBoosting (200 iterations; class-balanced), evaluated using five-fold `StratifiedGroupKFold` with timestamp groups (`random_state=42`).
+## Methodology
 
-| Model | Pooled OOF AP | Mean fold AP ± SD |
-|---|---:|---:|
-| Logistic Regression | 0.1390 | 0.1568 ± 0.0290 |
-| Random Forest | 0.1860 | 0.2279 ± 0.0973 |
-| HistGradientBoosting | 0.1916 | 0.2289 ± 0.0997 |
+The primary evaluation includes:
 
-The overall failure prevalence was 0.0664. Pooled AP is calculated once using all out-of-fold predictions; mean fold AP averages the five fold-specific AP values. Their difference is expected because AP is ranking-based and score distributions from separate folds are not necessarily on a common scale.
+1. Data integrity, missingness and feature-variability analysis.
+2. Five-fold `StratifiedGroupKFold` comparison using timestamp groups.
+3. Average precision (AP; referred to as PR-AUC in the notebook) for imbalanced classification.
+4. Nested grouped threshold selection (five outer folds, four inner folds) with an illustrative 80% recall target.
+5. Test-time missingness simulation at 0%, 5%, 10%, 20% and 30%, repeated five times.
+6. Expanding-window chronological evaluation on Periods 3–5.
+7. Sensor-level distribution and missingness audits, grouped permutation importance and a missingness-indicator comparison.
 
-### Separate exploratory configuration
+## Selected results from the primary evaluation
 
-An earlier grouped benchmark in the notebook uses different estimator settings (including a 500-tree Random Forest and 150-iteration HistGradientBoosting). It produced pooled AP of 0.1926 for Random Forest and 0.1880 for HistGradientBoosting. These results are not directly interchangeable with the primary model comparison above.
+### Grouped model comparison
 
-## 3. Nested threshold evaluation
+Pooled out-of-fold average precision:
 
-Five outer folds and four inner folds were used. The inner folds selected a threshold to target at least 80% recall; the threshold was then evaluated on the untouched outer fold.
+| Model | Pooled OOF AP |
+|---|---:|
+| Logistic Regression | 0.1390 |
+| Random Forest | 0.1860 |
+| HistGradientBoosting | 0.1916 |
 
-| Model | TP | FP | TN | FN | Recall | Precision | Inspection rate |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Random Forest | 80 | 635 | 828 | 24 | 0.7692 | 0.1119 | 0.4563 |
-| HistGradientBoosting | 86 | 823 | 640 | 18 | 0.8269 | 0.0946 | 0.5801 |
+The overall failure-prevalence baseline is 0.0664. The separate mean of the five fold-level AP scores was 0.1568 ± 0.0290 for Logistic Regression, 0.2279 ± 0.0973 for Random Forest and 0.2289 ± 0.0997 for HistGradientBoosting. **Pooled AP and mean fold AP are different summaries and should not be interchanged.**
 
-The target recall was not consistently met on every outer fold. Pooled recall reflects the combined outer-fold predictions. HistGradientBoosting detected six more failures but triggered 194 more inspections than Random Forest.
+*Configuration note:* the notebook also retains an earlier exploratory grouped benchmark using different model settings. That separate configuration produced pooled AP of 0.1926 (Random Forest) and 0.1880 (HistGradientBoosting). Those values are not the headline results above and should not be mixed with the primary evaluation.
 
-## 4. Additional test-time missingness
+### Nested threshold evaluation
 
-Five masking repetitions were performed at 0%, 5%, 10%, 20% and 30% additional missingness. Masking was applied only to originally observed values in test data; training data were unchanged.
+Thresholds were selected from inner-fold out-of-fold predictions and evaluated on untouched outer folds. The 80% recall target is a selection objective, not a guarantee on held-out observations.
 
-| Model | Added missingness | Mean AP | Mean recall | Mean inspection rate |
-|---|---:|---:|---:|---:|
-| HistGradientBoosting | 0% | 0.2289 | 0.8282 | 0.5803 |
-| HistGradientBoosting | 5% | 0.2315 | 0.8209 | 0.5676 |
-| HistGradientBoosting | 10% | 0.2304 | 0.8120 | 0.5582 |
-| HistGradientBoosting | 20% | 0.2115 | 0.7985 | 0.5362 |
-| HistGradientBoosting | 30% | 0.1994 | 0.7524 | 0.5047 |
-| Random Forest | 0% | 0.2279 | 0.7745 | 0.4566 |
-| Random Forest | 5% | 0.2318 | 0.7758 | 0.4780 |
-| Random Forest | 10% | 0.2283 | 0.7905 | 0.5057 |
-| Random Forest | 20% | 0.2211 | 0.8501 | 0.5683 |
-| Random Forest | 30% | 0.2072 | 0.8796 | 0.6438 |
+| Model | Recall | Precision | Inspection rate |
+|---|---:|---:|---:|
+| Random Forest | 76.92% | 11.19% | 45.63% |
+| HistGradientBoosting | 82.69% | 9.46% | 58.01% |
 
-The Random Forest recall increase at higher missingness coincided with a higher inspection rate and more false positives. Small non-monotonic AP changes occur at intermediate levels.
+HistGradientBoosting detected six more failures in the pooled outer folds, but required 194 additional inspections. Neither model dominates across recall, precision and inspection workload.
 
-## 5. Expanding-window temporal evaluation
+### Additional test-time missingness
 
-Unique timestamps were divided into five chronological blocks. The models were trained on all earlier blocks and tested on Periods 3–5.
+The models were trained on the original training data; artificial missing values were introduced only in test folds. Results below compare 0% with 30% additional missingness.
 
-| Test period | Train rows | Train failures | Test rows | Test failures | Baseline AP | RF AP | HGB AP |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 3 | 629 | 65 | 313 | 11 | 0.0351 | 0.2795 | 0.2979 |
-| 4 | 942 | 76 | 309 | 11 | 0.0356 | 0.0579 | 0.0471 |
-| 5 | 1,251 | 87 | 316 | 17 | 0.0538 | 0.0930 | 0.0543 |
+| Model | AP (0% → 30%) | Recall (0% → 30%) | Inspection rate (0% → 30%) |
+|---|---:|---:|---:|
+| HistGradientBoosting | 0.2289 → 0.1994 | 82.82% → 75.24% | 58.03% → 50.47% |
+| Random Forest | 0.2279 → 0.2072 | 77.45% → 87.96% | 45.66% → 64.38% |
 
-Mean AP across periods: Random Forest 0.1435; HistGradientBoosting 0.1331. Mean period-specific baseline AP: 0.0415. Period-specific positive counts are small, and the experiment cannot identify the cause of performance variation.
+Random Forest's increase in recall came with a larger inspection burden. The models therefore responded differently to additional missingness; recall alone is not sufficient to describe robustness.
 
-## 6. Sensor distribution and missingness audit
+### Expanding-window temporal evaluation
 
-| Test period | Sensors analysed | Sensors all-missing in training | Shift >1 training IQR | Shift >2 training IQR | Sensors with missingness change >10 pp | Mean absolute median shift (IQR units) |
-|---|---:|---:|---:|---:|---:|---:|
-| 3 | 444 | 16 | 1 | 0 | 36 | 0.1787 |
-| 4 | 460 | 0 | 7 | 1 | 44 | 0.2213 |
-| 5 | 464 | 0 | 9 | 5 | 56 | 0.2842 |
+| Test period | Test observations | Failures | Failure prevalence | Random Forest AP | HistGradientBoosting AP |
+|---|---:|---:|---:|---:|---:|
+| 3 | 313 | 11 | 0.0351 | 0.2795 | 0.2979 |
+| 4 | 309 | 11 | 0.0356 | 0.0579 | 0.0471 |
+| 5 | 316 | 17 | 0.0538 | 0.0930 | 0.0543 |
 
-Sensors with no observed training values or no valid positive training IQR were excluded from the standardised median-shift calculation. Sensor 72's median and missingness both changed across periods; Sensor 545 showed a higher median and wider spread in Period 5. These are descriptive shifts and are not evidence of causation.
+Mean AP across these three periods was 0.1435 for Random Forest and 0.1331 for HistGradientBoosting; mean period-specific prevalence was 0.0415. The later periods had only 11–17 failures each, so their estimates are sensitive to a small number of observations. The results do not establish that sensor drift caused the decline.
 
-## 7. Grouped permutation importance
+### Sensor and feature analysis
 
-Five timestamp-grouped folds were used, with 10 permutation repeats per fold and average precision as the scoring metric. Mean fold AP was 0.2368 ± 0.0963 for this feature-importance experiment. Sensor 59 had the largest mean importance (0.003459; SD 0.013925) and appeared in the top 20 in three of five folds. Correlated features can share importance; these values are not causal explanations.
+The robust sensor audit found 1, 7 and 9 sensors with absolute median shifts above one training IQR in Periods 3, 4 and 5, respectively. Sensors with missingness changes above 10 percentage points numbered 36, 44 and 56. Grouped permutation importance ranked Sensor 59 highest by mean importance (0.003459), but it appeared in the top 20 in only three of five folds; these values are exploratory and not causal evidence.
 
-## 8. Missingness-indicator comparison
+Adding missingness indicators did not consistently improve chronological AP: the with-minus-without changes were -0.0306, +0.0028 and -0.0035 in Periods 3, 4 and 5.
 
-Random Forest chronological AP with minus without missingness indicators:
+## Limitations
 
-| Test period | Failures | AP without indicators | AP with indicators | Difference |
-|---|---:|---:|---:|---:|
-| 3 | 11 | 0.2795 | 0.2489 | -0.0306 |
-| 4 | 11 | 0.0579 | 0.0607 | +0.0028 |
-| 5 | 17 | 0.0930 | 0.0895 | -0.0035 |
+- The dataset contains only 104 failure observations, and each chronological test period contains relatively few failures.
+- The study uses one public dataset; external manufacturing-line generalisation has not been tested.
+- SECOM does not establish that its measurements correspond specifically to a lithography process step.
+- Artificial test-time masking may not reproduce real industrial missing-data mechanisms.
+- Sensor importance and distribution changes are descriptive, not causal.
+- There has been no production deployment, prospective validation or operational cost evaluation.
 
-There was no consistent improvement across the three periods.
+## Repository contents
 
-## Interpretation and limitations
+- **Primary notebook:** [`notebooks/LithoAI_2_0_Research_Notebook.ipynb`](notebooks/LithoAI_2_0_Research_Notebook.ipynb)
+- **Detailed experimental tables:** [`notebooks/results/README.md`](notebooks/results/README.md)
+- **Methodology and reproducibility notes:** [`notebooks/documentation/README.md`](notebooks/documentation/README.md)
+- **Python dependencies:** [`requirements.txt`](requirements.txt)
 
-The primary experiments show modest AP above the overall failure-prevalence baseline, substantial threshold/inspection trade-offs, sensitivity to test-time missingness, and variable performance across later chronological periods. The dataset contains only 104 failures and the chronological test periods contain 11–17 failures each. Only one public dataset was studied; SECOM does not establish lithography-specific performance. Sensor shifts and permutation importance are exploratory, not causal. No production deployment or external manufacturing-line validation was performed.
+The older `lithoai_experiments.ipynb` is an earlier exploratory notebook. Use the LithoAI 2.0 research notebook as the current reference.
+
+## Reproducibility
+
+The notebook downloads the UCI SECOM dataset at runtime. To reproduce the experiments, use Python with the packages in `requirements.txt`, an internet connection, and run the notebook from the first cell to the last in a fresh environment. Confirm that the outputs complete and match the reported tables before reusing the numbers.
+
+## Author
+
+**Aryaa Kavi**  
+B.Tech — VLSI Design and Technology
